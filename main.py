@@ -1,6 +1,6 @@
 import os
 import json
-import requests
+import cloudscraper # <--- NEW LIBRARY
 import psycopg2
 from datetime import datetime
 from contextlib import asynccontextmanager
@@ -8,10 +8,7 @@ from fastapi import FastAPI
 from apscheduler.schedulers.background import BackgroundScheduler
 
 # --- CONFIGURATION ---
-# 1. DATABASE: Using your Supabase Connection Pooler (Port 6543)
-#    We added '?sslmode=require' to ensure a secure connection which Render prefers.
 DATABASE_URL = "postgresql://postgres.nnjctyovtecunurbkhnm:pranav1920@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres?sslmode=require"
-
 EXTERNAL_API_URL = "https://draw.ar-lottery01.com/WinGo/WinGo_1M/GetHistoryIssuePage.json"
 
 # --- HELPER FUNCTIONS ---
@@ -39,24 +36,16 @@ def find_value(item, possible_keys):
 
 # --- MAIN TASK: FETCH & SAVE ---
 def fetch_and_clean_data():
-    """Runs every 10 seconds to fetch data."""
     conn = None
     try:
-        # --- FIX FOR 403 ERRORS: DISGUISE AS A BROWSER ---
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-            "Accept": "application/json, text/javascript, */*; q=0.01",
-            "Referer": "https://draw.ar-lottery01.com/",
-            "Origin": "https://draw.ar-lottery01.com",
-            "X-Requested-With": "XMLHttpRequest"
-        }
-
-        # 1. Fetch from API with Headers
-        response = requests.get(EXTERNAL_API_URL, headers=headers, timeout=10)
+        # --- FIX FOR 403: USE CLOUDSCRAPER ---
+        # This creates a sophisticated browser session that solves blocks
+        scraper = cloudscraper.create_scraper() 
         
-        # Check specifically for "Forbidden" error
+        response = scraper.get(EXTERNAL_API_URL, timeout=15)
+        
         if response.status_code == 403:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] ⚠️ BLOCKED (403): The site is rejecting Render's IP.")
+            print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ FATAL BLOCK (403): Even Cloudscraper was blocked.")
             return
 
         if response.status_code != 200:
@@ -65,7 +54,7 @@ def fetch_and_clean_data():
             
         raw_json = response.json()
 
-        # 2. Parse Data structure
+        # Parse Data
         if isinstance(raw_json, list):
             items = raw_json
         elif 'data' in raw_json and isinstance(raw_json['data'], list):
@@ -77,11 +66,10 @@ def fetch_and_clean_data():
         else:
             items = [raw_json]
 
-        # 3. Connect to Database
+        # Connect to Database
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
         
-        # Ensure table exists (Safe to run repeatedly)
         cur.execute("""
             CREATE TABLE IF NOT EXISTS history (
                 period BIGINT PRIMARY KEY,
@@ -95,7 +83,6 @@ def fetch_and_clean_data():
         
         saved_count = 0
         for item in items:
-            # Smart Search for keys
             period = find_value(item, ['issueNumber', 'issue', 'period', 'planNo', 'issueNo', 'drawId'])
             number = find_value(item, ['number', 'winningNumber', 'openNumber', 'result', 'winNumber', 'code'])
 
@@ -105,7 +92,6 @@ def fetch_and_clean_data():
                 color = get_color(number_int)
                 size = get_size(number_int)
                 
-                # UPSERT: Insert if new, Do nothing if exists
                 cur.execute("""
                     INSERT INTO history (period, draw_time, winning_number, result_color, result_size, raw_json)
                     VALUES (%s, %s, %s, %s, %s, %s)
@@ -121,13 +107,11 @@ def fetch_and_clean_data():
         if saved_count > 0:
             print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ Saved {saved_count} new rounds.")
         else:
-            # Just a small log to show it's alive
             print(f"[{datetime.now().strftime('%H:%M:%S')}] .")
 
     except Exception as e:
         print(f"❌ Error: {e}")
     finally:
-        # CRITICAL: Close connection to prevent crashing Supabase
         if conn:
             conn.close()
 
@@ -136,23 +120,18 @@ scheduler = BackgroundScheduler()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Start Scheduler on App Startup
-    print("🚀 Starting 10-second background fetcher...")
+    print("🚀 Starting 10-second background scraper...")
     scheduler.add_job(fetch_and_clean_data, 'interval', seconds=10)
     scheduler.start()
-    
     yield
-    
-    # Stop Scheduler on Shutdown
-    print("🛑 Stopping background fetcher...")
+    print("🛑 Stopping background scraper...")
     scheduler.shutdown()
 
 app = FastAPI(lifespan=lifespan)
 
-# --- API ENDPOINTS ---
 @app.get("/")
 def home():
-    return {"message": "Lottery Bot is Running with Anti-Block Headers"}
+    return {"message": "Lottery Bot Running with Cloudscraper"}
 
 @app.get("/history")
 def get_history():
