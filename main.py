@@ -1,6 +1,6 @@
 import os
 import json
-from curl_cffi import requests as crequests  # <--- THE NEW WEAPON
+from curl_cffi import requests as crequests  # <--- WE ARE USING THIS NOW
 import psycopg2
 from datetime import datetime
 from contextlib import asynccontextmanager
@@ -40,12 +40,12 @@ def fetch_and_clean_data():
     conn = None
     try:
         # --- FIX ATTEMPT 3: TLS IMPERSONATION ---
-        # We pretend to be Chrome 120 EXACTLY, down to the encryption packet
         print(f"[{datetime.now().strftime('%H:%M:%S')}] 2️⃣ CURL-CFFI: Requesting as Chrome 120...", flush=True)
         
+        # We use crequests (curl_cffi) instead of cloudscraper
         response = crequests.get(
             EXTERNAL_API_URL,
-            impersonate="chrome120", # This mimics a real browser's fingerprint
+            impersonate="chrome120", 
             timeout=15
         )
         
