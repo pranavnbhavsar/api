@@ -1,6 +1,6 @@
 import os
 import json
-import cloudscraper # <--- NEW LIBRARY
+import cloudscraper
 import psycopg2
 from datetime import datetime
 from contextlib import asynccontextmanager
@@ -34,25 +34,30 @@ def find_value(item, possible_keys):
             return item[key]
     return None
 
-# --- MAIN TASK: FETCH & SAVE ---
+# --- MAIN TASK ---
 def fetch_and_clean_data():
+    # Force logs to appear immediately with flush=True
+    print(f"[{datetime.now().strftime('%H:%M:%S')}] 1️⃣ START: Job triggered", flush=True)
     conn = None
     try:
-        # --- FIX FOR 403: USE CLOUDSCRAPER ---
-        # This creates a sophisticated browser session that solves blocks
+        # Step 1: Create Scraper
         scraper = cloudscraper.create_scraper() 
-        
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] 2️⃣ SCRAPER: Ready. Requesting URL...", flush=True)
+
+        # Step 2: Request
         response = scraper.get(EXTERNAL_API_URL, timeout=15)
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] 3️⃣ RESPONSE: Got code {response.status_code}", flush=True)
         
         if response.status_code == 403:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] ❌ FATAL BLOCK (403): Even Cloudscraper was blocked.")
+            print("❌ BLOCKED: 403 Forbidden", flush=True)
             return
 
         if response.status_code != 200:
-            print(f"⚠️ API Error: {response.status_code}")
+            print(f"⚠️ ERROR: API returned {response.status_code}", flush=True)
             return
             
         raw_json = response.json()
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] 4️⃣ PARSE: JSON received", flush=True)
 
         # Parse Data
         if isinstance(raw_json, list):
@@ -66,7 +71,8 @@ def fetch_and_clean_data():
         else:
             items = [raw_json]
 
-        # Connect to Database
+        # Step 3: Connect DB
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] 5️⃣ DB: Connecting...", flush=True)
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
         
@@ -104,34 +110,31 @@ def fetch_and_clean_data():
         conn.commit()
         cur.close()
         
-        if saved_count > 0:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ Saved {saved_count} new rounds.")
-        else:
-            print(f"[{datetime.now().strftime('%H:%M:%S')}] .")
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ FINISHED: Saved {saved_count} new rounds.", flush=True)
 
     except Exception as e:
-        print(f"❌ Error: {e}")
+        print(f"❌ CRITICAL ERROR: {e}", flush=True)
     finally:
         if conn:
             conn.close()
 
-# --- SCHEDULER SETUP ---
+# --- SCHEDULER ---
 scheduler = BackgroundScheduler()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("🚀 Starting 10-second background scraper...")
+    print("🚀 LIFESPAN: Starting scheduler...", flush=True)
     scheduler.add_job(fetch_and_clean_data, 'interval', seconds=10)
     scheduler.start()
     yield
-    print("🛑 Stopping background scraper...")
+    print("🛑 LIFESPAN: Stopping scheduler...", flush=True)
     scheduler.shutdown()
 
 app = FastAPI(lifespan=lifespan)
 
 @app.get("/")
 def home():
-    return {"message": "Lottery Bot Running with Cloudscraper"}
+    return {"message": "Debug Mode Active"}
 
 @app.get("/history")
 def get_history():
