@@ -1,7 +1,5 @@
 fastapi
 uvicorn
-requests
 psycopg2-binary
 apscheduler
-cloudscraper
-brotli
+curl-cffi
