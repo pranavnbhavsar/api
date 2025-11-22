@@ -9,7 +9,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 # --- CONFIGURATION ---
 # I kept your link, but for safety, consider using environment variables in the future!
-DATABASE_URL = "postgresql://postgres:pranav1920@db.nnjctyovtecunurbkhnm.supabase.co:5432/postgres"
+DATABASE_URL = "postgresql://postgres.nnjctyovtecunurbkhnm:pranav1920@aws-1-ap-northeast-1.pooler.supabase.com:6543/postgres?sslmode=require"
 
 EXTERNAL_API_URL = "https://draw.ar-lottery01.com/WinGo/WinGo_1M/GetHistoryIssuePage.json"
 
@@ -156,3 +156,4 @@ def get_history():
     finally:
         if conn:
             conn.close()
+
