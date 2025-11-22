@@ -1,6 +1,6 @@
 import os
 import json
-import cloudscraper
+from curl_cffi import requests as crequests  # <--- THE NEW WEAPON
 import psycopg2
 from datetime import datetime
 from contextlib import asynccontextmanager
@@ -36,20 +36,23 @@ def find_value(item, possible_keys):
 
 # --- MAIN TASK ---
 def fetch_and_clean_data():
-    # Force logs to appear immediately with flush=True
     print(f"[{datetime.now().strftime('%H:%M:%S')}] 1️⃣ START: Job triggered", flush=True)
     conn = None
     try:
-        # Step 1: Create Scraper
-        scraper = cloudscraper.create_scraper() 
-        print(f"[{datetime.now().strftime('%H:%M:%S')}] 2️⃣ SCRAPER: Ready. Requesting URL...", flush=True)
-
-        # Step 2: Request
-        response = scraper.get(EXTERNAL_API_URL, timeout=15)
+        # --- FIX ATTEMPT 3: TLS IMPERSONATION ---
+        # We pretend to be Chrome 120 EXACTLY, down to the encryption packet
+        print(f"[{datetime.now().strftime('%H:%M:%S')}] 2️⃣ CURL-CFFI: Requesting as Chrome 120...", flush=True)
+        
+        response = crequests.get(
+            EXTERNAL_API_URL,
+            impersonate="chrome120", # This mimics a real browser's fingerprint
+            timeout=15
+        )
+        
         print(f"[{datetime.now().strftime('%H:%M:%S')}] 3️⃣ RESPONSE: Got code {response.status_code}", flush=True)
         
         if response.status_code == 403:
-            print("❌ BLOCKED: 403 Forbidden", flush=True)
+            print("❌ BLOCKED: Still 403. The IP itself is banned.", flush=True)
             return
 
         if response.status_code != 200:
@@ -71,7 +74,7 @@ def fetch_and_clean_data():
         else:
             items = [raw_json]
 
-        # Step 3: Connect DB
+        # Connect DB
         print(f"[{datetime.now().strftime('%H:%M:%S')}] 5️⃣ DB: Connecting...", flush=True)
         conn = psycopg2.connect(DATABASE_URL)
         cur = conn.cursor()
@@ -134,7 +137,7 @@ app = FastAPI(lifespan=lifespan)
 
 @app.get("/")
 def home():
-    return {"message": "Debug Mode Active"}
+    return {"message": "Lottery Bot - Attempt 3 (TLS)"}
 
 @app.get("/history")
 def get_history():
